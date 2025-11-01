@@ -9,9 +9,7 @@ pub const ParseError = error{
 };
 
 fn parseMethod(str: []const u8, map: http.MethodMap) ParseError!struct { method: http.Method, remaining: []const u8 } {
-    const index = std.mem.indexOf(u8, str, " ") orelse {
-        return ParseError.InvalidRequest;
-    };
+    const index = std.mem.indexOf(u8, str, " ") orelse return ParseError.InvalidRequest;
     const method_str = str[0..index];
     const remaining = str[index + 1 ..];
 
@@ -23,9 +21,7 @@ fn parseMethod(str: []const u8, map: http.MethodMap) ParseError!struct { method:
 }
 
 fn parsePath(str: []const u8) ParseError!struct { path: []const u8, remaining: []const u8 } {
-    const index = std.mem.indexOf(u8, str, " ") orelse {
-        return ParseError.InvalidRequest;
-    };
+    const index = std.mem.indexOf(u8, str, " ") orelse return ParseError.InvalidRequest;
     const path_str = str[0..index];
     const remaining = str[index + 1 ..];
 
@@ -33,9 +29,7 @@ fn parsePath(str: []const u8) ParseError!struct { path: []const u8, remaining: [
 }
 
 fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { version: http.Version, remaining: []const u8 } {
-    const index = std.mem.indexOf(u8, str, "\n") orelse {
-        return ParseError.InvalidRequest;
-    };
+    const index = std.mem.indexOf(u8, str, "\n") orelse return ParseError.InvalidRequest;
     const version_str = str[0..index];
     const remaining = str[index + 1 ..];
 
