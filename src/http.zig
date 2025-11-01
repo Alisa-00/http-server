@@ -39,9 +39,16 @@ pub const Version = enum {
 };
 
 pub const VersionMap = std.StringHashMap(Version);
-
-pub const version_enum_strings = [_][]const u8{ "HTTP_10", "HTTP_11" }; //, "HTTP_20", "HTTP_30" };
 pub const version_http_strings = [_][]const u8{ "HTTP/1.0", "HTTP/1.1" }; //, "HTTP/2.0", "HTTP/3.0" };
+
+pub const version_enum_strings = blk: {
+    const version_fields = @typeInfo(Version).@"enum".fields;
+    var arr: [version_fields.len][]const u8 = undefined;
+    for (version_fields, 0..) |field, i| {
+        arr[i] = field.name;
+    }
+    break :blk arr;
+};
 
 pub fn initVersionMap(allocator: std.mem.Allocator) !VersionMap {
     var version_map = VersionMap.init(allocator);
