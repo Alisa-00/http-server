@@ -81,7 +81,7 @@ test "parse http methods test" {
         \\
     ;
 
-    for (http.map_strings) |method| {
+    for (http.method_strings) |method| {
         std.debug.print("TESTING METHOD: {s}\t\t\t", .{method});
 
         const slices = &[_][]const u8{ method, TEST_REQUEST };
@@ -103,7 +103,7 @@ test "parse http methods test" {
         std.debug.print("SUCCESS\n", .{});
     }
 
-    for (http.map_strings) |method| {
+    for (http.method_strings) |method| {
         const method_slices = &[_][]const u8{ "no", method };
         const name = try std.mem.concat(allocator, u8, method_slices);
         std.debug.print("TESTING FAKE METHOD: {s}\t\t\t\t", .{name});
