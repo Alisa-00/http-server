@@ -79,30 +79,27 @@ pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: ht
 }
 
 const builtin = @import("builtin");
-const REQUEST = blk: {
-    if (builtin.is_test) {
-        break :blk 
-        \\GET /hello?name=test HTTP/1.1
-        \\Host: localhost:8080
-        \\User-Agent: curl/8.7.1
-        \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-        \\Accept-Encoding: gzip, deflate
-        \\Connection: keep-alive
-        \\
-        ;
-    }
+const REQUEST = if (builtin.is_test)
+blk: {
+    break :blk 
+    \\GET /hello?name=test HTTP/1.1
+    \\Host: localhost:8080
+    \\User-Agent: curl/8.7.1
+    \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+    \\Accept-Encoding: gzip, deflate
+    \\Connection: keep-alive
+    \\
+    ;
 };
 
-var gpa = blk: {
-    if (builtin.is_test) {
-        break :blk std.heap.DebugAllocator(.{}){};
-    }
+var gpa = if (builtin.is_test)
+blk: {
+    break :blk std.heap.DebugAllocator(.{}){};
 };
 
-const test_allocator = blk: {
-    if (builtin.is_test) {
-        break :blk gpa.allocator();
-    }
+const test_allocator = if (builtin.is_test)
+blk: {
+    break :blk gpa.allocator();
 };
 
 test "parse http methods test" {
