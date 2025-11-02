@@ -40,18 +40,33 @@ fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { versi
     return .{ .version = version_enum, .remaining = remaining };
 }
 
+pub fn parseHeaders(str: []const u8) ParseError!void {
+    str = 'a';
+}
+
+pub fn parseBody(str: []const u8) ParseError!void {
+    str = 'a';
+}
+
 pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: http.VersionMap) ParseError!http.Request {
-    const parse_method_result = try parseMethod(str, method_map);
-    const method = parse_method_result.method;
-    const remaining1 = parse_method_result.remaining;
+    const parsed_method = try parseMethod(str, method_map);
+    const method = parsed_method.method;
+    const remaining1 = parsed_method.remaining;
 
-    const parse_path_result = try parsePath(remaining1);
-    const path = parse_path_result.path;
-    const remaining2 = parse_path_result.remaining;
+    const parsed_path = try parsePath(remaining1);
+    const path = parsed_path.path;
+    const remaining2 = parsed_path.remaining;
 
-    const parse_version_result = try parseVersion(remaining2, version_map);
-    const version = parse_version_result.version;
-    //const remaining3 = parse_version_result.remaining;
+    const parsed_version = try parseVersion(remaining2, version_map);
+    const version = parsed_version.version;
+    //const remaining3 = parsed_version.remaining;
+
+    //const parsed_headers = try parseHeaders(remaining3);
+    //const headers = parsed_headers.headers;
+    //const remaining4 = parsed_headers.remaining;
+
+    //const parsed_body = try parseBody(remaining4);
+    //const body = parsed_body;
 
     const req = http.Request{
         .method = method,
