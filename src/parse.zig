@@ -78,31 +78,61 @@ pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: ht
     return req;
 }
 
-test "parse http methods test" {
-    std.debug.print("parse method test initiated\n\n", .{});
+const builtin = @import("builtin");
+const TEST_REQUEST = blk: {
+    if (builtin.is_test) {
+        const x =
+            \\ /hello?name=test HTTP/1.1
+            \\Host: localhost:8080
+            \\User-Agent: curl/8.7.1
+            \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+            \\Accept-Encoding: gzip, deflate
+            \\Connection: keep-alive
+            \\
+        ;
+        break :blk x;
+    }
+};
 
-    var gpa = std.heap.DebugAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var map = try http.initMethodMap(allocator);
-    defer map.deinit();
-
-    const TEST_REQUEST =
-        \\ /hello?name=test HTTP/1.1
+const REQUEST = blk: {
+    if (builtin.is_test) {
+        break :blk 
+        \\GET /hello?name=test HTTP/1.1
         \\Host: localhost:8080
         \\User-Agent: curl/8.7.1
         \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
         \\Accept-Encoding: gzip, deflate
         \\Connection: keep-alive
         \\
-    ;
+        ;
+    }
+};
+
+var gpa = blk: {
+    if (builtin.is_test) {
+        break :blk std.heap.DebugAllocator(.{}){};
+    }
+};
+
+const test_allocator = blk: {
+    if (builtin.is_test) {
+        break :blk gpa.allocator();
+    }
+};
+
+test "parse http methods test" {
+    std.debug.print("parse method test initiated\n\n", .{});
+
+    var map = try http.initMethodMap(test_allocator);
+    defer map.deinit();
 
     for (http.method_strings) |method| {
         std.debug.print("TESTING METHOD: {s}\t\t\t", .{method});
 
         const slices = &[_][]const u8{ method, TEST_REQUEST };
-        const REQUEST = try std.mem.concat(allocator, u8, slices);
+        const FULL_REQUEST = try std.mem.concat(test_allocator, u8, slices);
 
-        const parsed = try parseMethod(REQUEST, map);
+        const parsed = try parseMethod(FULL_REQUEST, map);
 
         const method_enum = map.get(method).?;
 
@@ -120,13 +150,13 @@ test "parse http methods test" {
 
     for (http.method_strings) |method| {
         const method_slices = &[_][]const u8{ "no", method };
-        const name = try std.mem.concat(allocator, u8, method_slices);
+        const name = try std.mem.concat(test_allocator, u8, method_slices);
         std.debug.print("TESTING FAKE METHOD: {s}\t\t\t\t", .{name});
 
         const slices = &[_][]const u8{ name, TEST_REQUEST };
-        const REQUEST = try std.mem.concat(allocator, u8, slices);
+        const FULL_REQUEST = try std.mem.concat(test_allocator, u8, slices);
 
-        try std.testing.expectError(ParseError.InvalidMethod, parseMethod(REQUEST, map));
+        try std.testing.expectError(ParseError.InvalidMethod, parseMethod(FULL_REQUEST, map));
         std.debug.print("SUCCESS\n", .{});
     }
 
@@ -136,20 +166,8 @@ test "parse http methods test" {
 test "parse http path test" {
     std.debug.print("\nparse path test initiated\n", .{});
 
-    var gpa = std.heap.DebugAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var map = try http.initMethodMap(allocator);
+    var map = try http.initMethodMap(test_allocator);
     defer map.deinit();
-
-    const REQUEST =
-        \\GET /hello?name=test HTTP/1.1
-        \\Host: localhost:8080
-        \\User-Agent: curl/8.7.1
-        \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-        \\Accept-Encoding: gzip, deflate
-        \\Connection: keep-alive
-        \\
-    ;
 
     const parsed = try parseMethod(REQUEST, map);
     const remaining1 = parsed.remaining;
@@ -171,22 +189,10 @@ test "parse http path test" {
 test "parse http version test" {
     std.debug.print("\nparse version test initiated\n", .{});
 
-    var gpa = std.heap.DebugAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var method_map = try http.initMethodMap(allocator);
+    var method_map = try http.initMethodMap(test_allocator);
     defer method_map.deinit();
-    var version_map = try http.initVersionMap(allocator);
+    var version_map = try http.initVersionMap(test_allocator);
     defer version_map.deinit();
-
-    const REQUEST =
-        \\GET /hello?name=test HTTP/1.1
-        \\Host: localhost:8080
-        \\User-Agent: curl/8.7.1
-        \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-        \\Accept-Encoding: gzip, deflate
-        \\Connection: keep-alive
-        \\
-    ;
 
     const parsed = try parseMethod(REQUEST, method_map);
     const remaining1 = parsed.remaining;
@@ -211,22 +217,10 @@ test "parse http version test" {
 test "parse http full request test" {
     std.debug.print("\nparse version test initiated\n", .{});
 
-    var gpa = std.heap.DebugAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var method_map = try http.initMethodMap(allocator);
+    var method_map = try http.initMethodMap(test_allocator);
     defer method_map.deinit();
-    var version_map = try http.initVersionMap(allocator);
+    var version_map = try http.initVersionMap(test_allocator);
     defer version_map.deinit();
-
-    const REQUEST =
-        \\GET /hello?name=test HTTP/1.1
-        \\Host: localhost:8080
-        \\User-Agent: curl/8.7.1
-        \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-        \\Accept-Encoding: gzip, deflate
-        \\Connection: keep-alive
-        \\
-    ;
 
     const parsed = try parseRequest(REQUEST, method_map, version_map);
 
