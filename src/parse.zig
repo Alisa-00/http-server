@@ -79,21 +79,6 @@ pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: ht
 }
 
 const builtin = @import("builtin");
-const TEST_REQUEST = blk: {
-    if (builtin.is_test) {
-        const x =
-            \\ /hello?name=test HTTP/1.1
-            \\Host: localhost:8080
-            \\User-Agent: curl/8.7.1
-            \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-            \\Accept-Encoding: gzip, deflate
-            \\Connection: keep-alive
-            \\
-        ;
-        break :blk x;
-    }
-};
-
 const REQUEST = blk: {
     if (builtin.is_test) {
         break :blk 
@@ -125,6 +110,8 @@ test "parse http methods test" {
 
     var map = try http.initMethodMap(test_allocator);
     defer map.deinit();
+
+    const TEST_REQUEST = " / HTTP/1.1";
 
     for (http.method_strings) |method| {
         std.debug.print("TESTING METHOD: {s}\t\t\t", .{method});
