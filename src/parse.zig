@@ -4,6 +4,7 @@ const http = @import("http.zig");
 pub const ParseError = error{
     InvalidRequest,
     InvalidMethod,
+    InvalidHeader,
     UnsupportedVersion,
     OutOfMemory,
 };
@@ -29,9 +30,9 @@ fn parsePath(str: []const u8) ParseError!struct { path: []const u8, remaining: [
 }
 
 fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { version: http.Version, remaining: []const u8 } {
-    const index = std.mem.indexOf(u8, str, "\n") orelse return ParseError.InvalidRequest;
+    const index = std.mem.indexOf(u8, str, "\r\n") orelse return ParseError.InvalidRequest;
     const version_str = str[0..index];
-    const remaining = str[index + 1 ..];
+    const remaining = str[index + 2 ..];
 
     const version_enum = map.get(version_str) orelse {
         return ParseError.UnsupportedVersion;
@@ -40,15 +41,38 @@ fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { versi
     return .{ .version = version_enum, .remaining = remaining };
 }
 
-pub fn parseHeaders(str: []const u8) ParseError!void {
-    str = 'a';
+fn parseHeaderLine(str: []const u8) ParseError!http.Header {
+    const index = std.mem.indexOf(u8, str, ":") orelse return ParseError.InvalidHeader;
+    const name = str[0..index];
+    const rest = str[index + 1 ..];
+    if (std.mem.startsWith(u8, rest, " ")) {
+        return .{ .name = name, .value = rest[1..] };
+    }
+    return .{ .name = name, .value = rest };
+}
+
+pub fn parseHeaders(str: []const u8, allocator: std.mem.Allocator) !struct { headers: *std.ArrayList(http.Header), remaining: []const u8 } {
+    var remaining: []const u8 = str;
+    var header_list = try std.ArrayList(http.Header).initCapacity(allocator, 64);
+    var done = std.mem.startsWith(u8, remaining, "\r\n");
+    while (!done) : (done = std.mem.startsWith(u8, remaining, "\r\n")) {
+        const index = std.mem.indexOf(u8, remaining, "\r\n") orelse return ParseError.InvalidRequest;
+        const line = remaining[0..index];
+        const header = try parseHeaderLine(line);
+        try header_list.append(allocator, header);
+        remaining = remaining[index + 2 ..];
+    }
+    remaining = remaining[2..];
+
+    return .{ .headers = &header_list, .remaining = remaining };
 }
 
 pub fn parseBody(str: []const u8) ParseError!void {
     str = 'a';
+    str.len;
 }
 
-pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: http.VersionMap) ParseError!http.Request {
+pub fn parseRequest(str: []const u8, allocator: std.mem.Allocator, method_map: http.MethodMap, version_map: http.VersionMap) !http.Request {
     const parsed_method = try parseMethod(str, method_map);
     const method = parsed_method.method;
     const remaining1 = parsed_method.remaining;
@@ -59,10 +83,10 @@ pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: ht
 
     const parsed_version = try parseVersion(remaining2, version_map);
     const version = parsed_version.version;
-    //const remaining3 = parsed_version.remaining;
+    const remaining3 = parsed_version.remaining;
 
-    //const parsed_headers = try parseHeaders(remaining3);
-    //const headers = parsed_headers.headers;
+    const parsed_headers = try parseHeaders(remaining3, allocator);
+    const headers = parsed_headers.headers;
     //const remaining4 = parsed_headers.remaining;
 
     //const parsed_body = try parseBody(remaining4);
@@ -72,6 +96,7 @@ pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: ht
         .method = method,
         .path = path,
         .version = version,
+        .headers = headers,
         .body = "",
     };
 
@@ -81,15 +106,24 @@ pub fn parseRequest(str: []const u8, method_map: http.MethodMap, version_map: ht
 const builtin = @import("builtin");
 const REQUEST = if (builtin.is_test)
 blk: {
-    break :blk 
-    \\GET /hello?name=test HTTP/1.1
-    \\Host: localhost:8080
-    \\User-Agent: curl/8.7.1
-    \\Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-    \\Accept-Encoding: gzip, deflate
-    \\Connection: keep-alive
-    \\
-    ;
+    break :blk "GET /hello?name=test HTTP/1.1\r\n" ++
+        "Host:localhost:8080\r\n" ++
+        "User-Agent:curl/8.7.1\r\n" ++
+        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" ++
+        "Accept-Encoding: gzip, deflate\r\n" ++
+        "Connection: keep-alive\r\n" ++
+        "\r\n" ++
+        "THIS IS THE BODY\r\n";
+};
+var http_request = if (builtin.is_test)
+blk: {
+    break :blk http.Request{
+        .method = .GET,
+        .path = "/hello?name=test",
+        .version = http.Version.HTTP_11,
+        .headers = undefined,
+        .body = "",
+    };
 };
 
 var gpa = if (builtin.is_test)
@@ -108,7 +142,7 @@ test "parse http methods test" {
     var map = try http.initMethodMap(test_allocator);
     defer map.deinit();
 
-    const TEST_REQUEST = " / HTTP/1.1";
+    const TEST_REQUEST = " / HTTP/1.1\r\n";
 
     for (http.method_strings) |method| {
         std.debug.print("TESTING METHOD: {s}\t\t\t", .{method});
@@ -124,6 +158,7 @@ test "parse http methods test" {
             .method = method_enum,
             .path = "",
             .version = http.Version.HTTP_11,
+            .headers = undefined,
             .body = "",
         };
 
@@ -158,14 +193,7 @@ test "parse http path test" {
 
     const parsed2 = try parsePath(remaining1);
 
-    const request = http.Request{
-        .method = .GET,
-        .path = "/hello?name=test",
-        .version = http.Version.HTTP_11,
-        .body = "",
-    };
-
-    try std.testing.expectEqualStrings(parsed2.path, request.path);
+    try std.testing.expectEqualStrings(parsed2.path, http_request.path);
 
     std.debug.print("parse path test finished successfully!\n", .{});
 }
@@ -186,38 +214,37 @@ test "parse http version test" {
 
     const parsed3 = try parseVersion(remaining2, version_map);
 
-    const request = http.Request{
-        .method = .GET,
-        .path = "/hello?name=test",
-        .version = http.Version.HTTP_11,
-        .body = "",
-    };
-
-    try std.testing.expectEqual(parsed3.version, request.version);
+    try std.testing.expectEqual(parsed3.version, http_request.version);
 
     std.debug.print("parse version test finished successfully!\n", .{});
 }
 
 test "parse http full request test" {
-    std.debug.print("\nparse version test initiated\n", .{});
+    std.debug.print("\nparse full request test initiated\n", .{});
 
     var method_map = try http.initMethodMap(test_allocator);
     defer method_map.deinit();
     var version_map = try http.initVersionMap(test_allocator);
     defer version_map.deinit();
 
-    const parsed = try parseRequest(REQUEST, method_map, version_map);
+    var header_list = try std.ArrayList(http.Header).initCapacity(test_allocator, 64);
+    try header_list.append(test_allocator, http.Header{ .name = "Host", .value = "localhost:8080" });
+    try header_list.append(test_allocator, http.Header{ .name = "User-Agent", .value = "curl/8.7.1" });
+    try header_list.append(test_allocator, http.Header{ .name = "Accept", .value = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" });
+    try header_list.append(test_allocator, http.Header{ .name = "Accept-Encoding", .value = "gzip, deflate" });
+    try header_list.append(test_allocator, http.Header{ .name = "Connection", .value = "keep-alive" });
+    defer header_list.deinit(test_allocator);
+    http_request.headers = &header_list;
 
-    const request = http.Request{
-        .method = .GET,
-        .path = "/hello?name=test",
-        .version = http.Version.HTTP_11,
-        .body = "",
-    };
+    const parsed = try parseRequest(REQUEST, test_allocator, method_map, version_map);
 
-    try std.testing.expectEqual(parsed.method, request.method);
-    try std.testing.expectEqualStrings(parsed.path, request.path);
-    try std.testing.expectEqual(parsed.version, request.version);
+    try std.testing.expectEqual(http_request.method, parsed.method);
+    try std.testing.expectEqualStrings(http_request.path, parsed.path);
+    try std.testing.expectEqual(http_request.version, parsed.version);
+    for (parsed.headers.items, http_request.headers.items) |parsed_header, test_header| {
+        try std.testing.expectEqualSlices(u8, test_header.name, parsed_header.name);
+        try std.testing.expectEqualSlices(u8, test_header.value, parsed_header.value);
+    }
 
-    std.debug.print("parse version test finished successfully!\n", .{});
+    std.debug.print("parse full request test finished successfully!\n", .{});
 }

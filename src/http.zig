@@ -63,13 +63,11 @@ pub const Request = struct {
     method: Method,
     path: []const u8,
     version: Version,
+    headers: *std.ArrayList(Header),
     body: []const u8,
 };
 
 pub const Header = struct {
-    host: []const u8,
-    user_agent: []const u8,
-    accept: []const u8,
-    accept_encoding: []const u8,
-    connection: []const u8,
+    name: []const u8,
+    value: []const u8,
 };
