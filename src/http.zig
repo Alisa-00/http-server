@@ -63,7 +63,7 @@ pub const Request = struct {
     method: Method,
     path: []const u8,
     version: Version,
-    headers: *std.ArrayList(Header),
+    headers: std.ArrayList(Header),
     body: []const u8,
 };
 
