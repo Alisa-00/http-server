@@ -225,11 +225,5 @@ test "parse http full request test" {
         try std.testing.expectEqualSlices(u8, test_header.value, parsed_header.value);
     }
 
-    std.debug.print("HTTP REQ SIZE:\t\t{d} bytes", @sizeOf(http.Request));
-    std.debug.print("METHOD SIZE:\t\t{d} bytes", @sizeOf(http.Method));
-    std.debug.print("HEADER LIST SIZE:\t\t{d} bytes", @sizeOf(std.ArrayList(http.Header)));
-    std.debug.print("VERSION SIZE:\t\t{d} bytes", @sizeOf(http.Version));
-    std.debug.print("BODY SIZE:\t\t{d} bytes", @sizeOf([]const u8));
-
     std.debug.print("parse full request test finished successfully!\n", .{});
 }
