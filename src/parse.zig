@@ -9,10 +9,11 @@ pub const ParseError = error{
     OutOfMemory,
 };
 
+const SPACE = " ";
 fn parseMethod(str: []const u8, map: http.MethodMap) ParseError!struct { http.Method, []const u8 } {
-    const index = std.mem.indexOf(u8, str, " ") orelse return ParseError.InvalidRequest;
+    const index = std.mem.indexOf(u8, str, SPACE) orelse return ParseError.InvalidRequest;
     const method_str = str[0..index];
-    const remaining = str[index + 1 ..];
+    const remaining = str[index + SPACE.len ..];
 
     const method_enum = map.get(method_str) orelse {
         return ParseError.InvalidMethod;
@@ -22,17 +23,18 @@ fn parseMethod(str: []const u8, map: http.MethodMap) ParseError!struct { http.Me
 }
 
 fn parsePath(str: []const u8) ParseError!struct { []const u8, []const u8 } {
-    const index = std.mem.indexOf(u8, str, " ") orelse return ParseError.InvalidRequest;
+    const index = std.mem.indexOf(u8, str, SPACE) orelse return ParseError.InvalidRequest;
     const path_str = str[0..index];
-    const remaining = str[index + 1 ..];
+    const remaining = str[index + SPACE.len ..];
 
     return .{ path_str, remaining };
 }
 
+const LINE_DELIMITER = "\r\n";
 fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { http.Version, []const u8 } {
-    const index = std.mem.indexOf(u8, str, "\r\n") orelse return ParseError.InvalidRequest;
+    const index = std.mem.indexOf(u8, str, LINE_DELIMITER) orelse return ParseError.InvalidRequest;
     const version_str = str[0..index];
-    const remaining = str[index + 2 ..];
+    const remaining = str[index + LINE_DELIMITER.len ..];
 
     const version_enum = map.get(version_str) orelse {
         return ParseError.UnsupportedVersion;
@@ -41,28 +43,30 @@ fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { http.
     return .{ version_enum, remaining };
 }
 
+const HEADER_VALUE_SEPARATOR = ":";
 fn parseHeaderLine(str: []const u8) ParseError!http.Header {
-    const index = std.mem.indexOf(u8, str, ":") orelse return ParseError.InvalidHeader;
+    const index = std.mem.indexOf(u8, str, HEADER_VALUE_SEPARATOR) orelse return ParseError.InvalidHeader;
     const name = str[0..index];
-    const rest = str[index + 1 ..];
+    const rest = str[index + HEADER_VALUE_SEPARATOR.len ..];
     if (std.mem.startsWith(u8, rest, " ")) {
-        return .{ .name = name, .value = rest[1..] };
+        return .{ .name = name, .value = rest[HEADER_VALUE_SEPARATOR.len..] };
     }
     return .{ .name = name, .value = rest };
 }
 
+const HEADER_COUNT = 64;
 pub fn parseHeaders(str: []const u8, allocator: std.mem.Allocator) !struct { std.ArrayList(http.Header), []const u8 } {
     var remaining: []const u8 = str;
-    var header_list = try std.ArrayList(http.Header).initCapacity(allocator, 64);
-    var done = std.mem.startsWith(u8, remaining, "\r\n");
-    while (!done) : (done = std.mem.startsWith(u8, remaining, "\r\n")) {
-        const index = std.mem.indexOf(u8, remaining, "\r\n") orelse return ParseError.InvalidRequest;
+    var header_list = try std.ArrayList(http.Header).initCapacity(allocator, HEADER_COUNT);
+    var done = std.mem.startsWith(u8, remaining, LINE_DELIMITER);
+    while (!done) : (done = std.mem.startsWith(u8, remaining, LINE_DELIMITER)) {
+        const index = std.mem.indexOf(u8, remaining, LINE_DELIMITER) orelse return ParseError.InvalidRequest;
         const line = remaining[0..index];
         const header = try parseHeaderLine(line);
         try header_list.append(allocator, header);
-        remaining = remaining[index + 2 ..];
+        remaining = remaining[index + LINE_DELIMITER.len ..];
     }
-    remaining = remaining[2..];
+    remaining = remaining[LINE_DELIMITER.len..];
 
     return .{ header_list, remaining };
 }
