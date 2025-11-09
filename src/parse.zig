@@ -71,8 +71,8 @@ pub fn parseHeaders(str: []const u8, allocator: std.mem.Allocator) !struct { std
     return .{ header_list, remaining };
 }
 
-pub fn parseBody(str: []const u8) ParseError!void {
-    _ = str;
+pub fn parseBody(str: []const u8) ParseError![]const u8 {
+    return str;
 }
 
 pub fn parseRequest(str: []const u8, allocator: std.mem.Allocator, method_map: http.MethodMap, version_map: http.VersionMap) !http.Request {
@@ -80,14 +80,14 @@ pub fn parseRequest(str: []const u8, allocator: std.mem.Allocator, method_map: h
     const path, remaining = try parsePath(remaining);
     const version, remaining = try parseVersion(remaining, version_map);
     const headers, remaining = try parseHeaders(remaining, allocator);
-    //const body = try parseBody(remaining);
+    const body = try parseBody(remaining);
 
     const req = http.Request{
         .method = method,
         .path = path,
         .version = version,
         .headers = headers,
-        .body = "", //body,
+        .body = body,
     };
 
     return req;
@@ -112,7 +112,7 @@ blk: {
         .path = "/hello?name=test",
         .version = http.Version.HTTP_11,
         .headers = undefined,
-        .body = "",
+        .body = "THIS IS THE BODY\r\n",
     };
 };
 
@@ -228,6 +228,7 @@ test "parse http full request test" {
         try std.testing.expectEqualSlices(u8, test_header.name, parsed_header.name);
         try std.testing.expectEqualSlices(u8, test_header.value, parsed_header.value);
     }
+    try std.testing.expectEqualStrings(http_request.body, parsed.body);
 
     std.debug.print("parse full request test finished successfully!\n", .{});
 }
