@@ -55,23 +55,30 @@ fn parseHeaderLine(str: []const u8) ParseError!http.Header {
 }
 
 const HEADER_COUNT = 64;
-pub fn parseHeaders(str: []const u8, allocator: std.mem.Allocator) !struct { std.ArrayList(http.Header), []const u8 } {
+pub fn parseHeaders(str: []const u8, allocator: std.mem.Allocator) !struct { std.ArrayList(http.Header), isize, []const u8 } {
     var remaining: []const u8 = str;
     var header_list = try std.ArrayList(http.Header).initCapacity(allocator, HEADER_COUNT);
     var done = std.mem.startsWith(u8, remaining, LINE_DELIMITER);
+    var content_length: isize = -1;
     while (!done) : (done = std.mem.startsWith(u8, remaining, LINE_DELIMITER)) {
         const index = std.mem.indexOf(u8, remaining, LINE_DELIMITER) orelse return ParseError.InvalidRequest;
         const line = remaining[0..index];
         const header = try parseHeaderLine(line);
         try header_list.append(allocator, header);
+        if (std.ascii.eqlIgnoreCase(header.name, "content-length")) content_length = try std.fmt.parseInt(isize, header.value, 10);
         remaining = remaining[index + LINE_DELIMITER.len ..];
     }
     remaining = remaining[LINE_DELIMITER.len..];
 
-    return .{ header_list, remaining };
+    return .{ header_list, content_length, remaining };
 }
 
-pub fn parseBody(str: []const u8) ParseError![]const u8 {
+pub fn parseBody(str: []const u8, content_length: isize) ParseError![]const u8 {
+    if (content_length > -1) {
+        if (content_length >= str.len) return str;
+        return str[0..@intCast(content_length)];
+    }
+
     return str;
 }
 
@@ -79,8 +86,8 @@ pub fn parseRequest(str: []const u8, allocator: std.mem.Allocator, method_map: h
     const method, var remaining = try parseMethod(str, method_map);
     const path, remaining = try parsePath(remaining);
     const version, remaining = try parseVersion(remaining, version_map);
-    const headers, remaining = try parseHeaders(remaining, allocator);
-    const body = try parseBody(remaining);
+    const headers, const length, remaining = try parseHeaders(remaining, allocator);
+    const body = try parseBody(remaining, length);
 
     const req = http.Request{
         .method = method,
@@ -102,6 +109,7 @@ blk: {
         "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" ++
         "Accept-Encoding: gzip, deflate\r\n" ++
         "Connection: keep-alive\r\n" ++
+        "Content-Length: 10\r\n" ++
         "\r\n" ++
         "THIS IS THE BODY\r\n";
 };
@@ -215,6 +223,7 @@ test "parse http full request test" {
     try header_list.append(test_allocator, http.Header{ .name = "Accept", .value = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" });
     try header_list.append(test_allocator, http.Header{ .name = "Accept-Encoding", .value = "gzip, deflate" });
     try header_list.append(test_allocator, http.Header{ .name = "Connection", .value = "keep-alive" });
+    try header_list.append(test_allocator, http.Header{ .name = "Content-Length", .value = "10" });
     defer header_list.deinit(test_allocator);
     http_request.headers = header_list;
 
@@ -228,7 +237,7 @@ test "parse http full request test" {
         try std.testing.expectEqualSlices(u8, test_header.name, parsed_header.name);
         try std.testing.expectEqualSlices(u8, test_header.value, parsed_header.value);
     }
-    try std.testing.expectEqualStrings(http_request.body, parsed.body);
+    try std.testing.expectEqualStrings(http_request.body[0..10], parsed.body);
 
     std.debug.print("parse full request test finished successfully!\n", .{});
 }
