@@ -29,12 +29,25 @@ pub fn main() !void {
 
     const parsed = try parse.parseRequest(REQUEST, allocator, method_map, version_map);
 
-    try stdout.print("METHOD: {s}\nPATH: {s}\nVERSION: {s}\n\nHEADERS:\n", .{ @tagName(parsed.method), parsed.path, @tagName(parsed.version) });
+    try stdout.print("METHOD: {s}\nTARGET: {s}\nVERSION: {s}\n\nHEADERS:\n", .{ @tagName(parsed.method), parsed.target, @tagName(parsed.version) });
     for (parsed.headers.items) |header| {
         try stdout.print("{s}: {s}\n", .{ header.name, header.value });
     }
 
     try stdout.print("\nBODY:\n{s}", .{parsed.body});
+
+    switch (parsed.method) {
+        .GET => {},
+        .POST => {},
+        .PUT => {},
+        .DELETE => {},
+        .PATCH => {},
+        .OPTIONS => {},
+        .HEAD => {},
+        .TRACE => {},
+        .CONNECT => {},
+        .OTHER => {},
+    }
 
     try stdout.flush();
 }

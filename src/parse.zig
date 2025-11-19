@@ -22,12 +22,12 @@ fn parseMethod(str: []const u8, map: http.MethodMap) ParseError!struct { http.Me
     return .{ method_enum, remaining };
 }
 
-fn parsePath(str: []const u8) ParseError!struct { []const u8, []const u8 } {
+fn parseTarget(str: []const u8) ParseError!struct { []const u8, []const u8 } {
     const index = std.mem.indexOf(u8, str, SPACE) orelse return ParseError.InvalidRequest;
-    const path_str = str[0..index];
+    const target_str = str[0..index];
     const remaining = str[index + SPACE.len ..];
 
-    return .{ path_str, remaining };
+    return .{ target_str, remaining };
 }
 
 const LINE_DELIMITER = "\r\n";
@@ -84,14 +84,14 @@ pub fn parseBody(str: []const u8, content_length: isize) ParseError![]const u8 {
 
 pub fn parseRequest(str: []const u8, allocator: std.mem.Allocator, method_map: http.MethodMap, version_map: http.VersionMap) !http.Request {
     const method, var remaining = try parseMethod(str, method_map);
-    const path, remaining = try parsePath(remaining);
+    const target, remaining = try parseTarget(remaining);
     const version, remaining = try parseVersion(remaining, version_map);
     const headers, const length, remaining = try parseHeaders(remaining, allocator);
     const body = try parseBody(remaining, length);
 
     const req = http.Request{
         .method = method,
-        .path = path,
+        .target = target,
         .version = version,
         .headers = headers,
         .body = body,
@@ -117,7 +117,7 @@ var http_request = if (builtin.is_test)
 blk: {
     break :blk http.Request{
         .method = .GET,
-        .path = "/hello?name=test",
+        .target = "/hello?name=test",
         .version = http.Version.HTTP_11,
         .headers = undefined,
         .body = "THIS IS THE BODY\r\n",
@@ -149,7 +149,7 @@ test "parse http methods test" {
 
         const request = http.Request{
             .method = method_enum,
-            .path = "",
+            .target = "",
             .version = http.Version.HTTP_11,
             .headers = undefined,
             .body = "",
@@ -177,18 +177,18 @@ test "parse http methods test" {
     std.debug.print("\nparse method test finished successfully!\n", .{});
 }
 
-test "parse http path test" {
-    std.debug.print("\nparse path test initiated\n", .{});
+test "parse http target test" {
+    std.debug.print("\nparse target test initiated\n", .{});
 
     var map = try http.initMethodMap(test_allocator);
     defer map.deinit();
 
     _, var remaining = try parseMethod(REQUEST, map);
-    const path, remaining = try parsePath(remaining);
+    const target, remaining = try parseTarget(remaining);
 
-    try std.testing.expectEqualStrings(path, http_request.path);
+    try std.testing.expectEqualStrings(target, http_request.target);
 
-    std.debug.print("parse path test finished successfully!\n", .{});
+    std.debug.print("parse target test finished successfully!\n", .{});
 }
 
 test "parse http version test" {
@@ -200,7 +200,7 @@ test "parse http version test" {
     defer version_map.deinit();
 
     _, var remaining = try parseMethod(REQUEST, method_map);
-    _, remaining = try parsePath(remaining);
+    _, remaining = try parseTarget(remaining);
 
     const version, remaining = try parseVersion(remaining, version_map);
 
@@ -231,7 +231,7 @@ test "parse http full request test" {
     defer parsed.headers.deinit(test_allocator);
 
     try std.testing.expectEqual(http_request.method, parsed.method);
-    try std.testing.expectEqualStrings(http_request.path, parsed.path);
+    try std.testing.expectEqualStrings(http_request.target, parsed.target);
     try std.testing.expectEqual(http_request.version, parsed.version);
     for (parsed.headers.items, http_request.headers.items) |parsed_header, test_header| {
         try std.testing.expectEqualSlices(u8, test_header.name, parsed_header.name);

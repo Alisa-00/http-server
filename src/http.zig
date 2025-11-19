@@ -61,8 +61,16 @@ pub fn initVersionMap(allocator: std.mem.Allocator) !VersionMap {
 
 pub const Request = struct {
     method: Method,
-    path: []const u8,
+    target: []const u8,
     version: Version,
+    headers: std.ArrayList(Header),
+    body: []const u8,
+};
+
+pub const Response = struct {
+    version: Version,
+    status: StatusCode,
+    reason: []const u8,
     headers: std.ArrayList(Header),
     body: []const u8,
 };
@@ -70,4 +78,15 @@ pub const Request = struct {
 pub const Header = struct {
     name: []const u8,
     value: []const u8,
+};
+
+pub const StatusCode = enum {
+    HTTP_200,
+    HTTP_202,
+    HTTP_302,
+    HTTP_400,
+    HTTP_404,
+    HTTP_500,
+    HTTP_503,
+    Other,
 };
