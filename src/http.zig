@@ -32,14 +32,13 @@ pub fn initMethodMap(allocator: std.mem.Allocator) !MethodMap {
 }
 
 pub const Version = enum {
-    HTTP_10,
     HTTP_11,
-    //HTTP_20,
-    //HTTP_30,
 };
 
+pub const HTTP_VERSION = Version.HTTP_11;
+
 pub const VersionMap = std.StringHashMap(Version);
-pub const version_http_strings = [_][]const u8{ "HTTP/1.0", "HTTP/1.1" }; //, "HTTP/2.0", "HTTP/3.0" };
+pub const version_http_strings = [_][]const u8{"HTTP/1.1"}; //, "HTTP/2.0", "HTTP/3.0" };
 
 pub const version_enum_strings = blk: {
     const version_fields = @typeInfo(Version).@"enum".fields;
@@ -61,22 +60,41 @@ pub fn initVersionMap(allocator: std.mem.Allocator) !VersionMap {
 
 pub const Request = struct {
     method: Method,
-    target: []const u8,
+    path: []const u8,
+    query: []const u8,
     version: Version,
-    headers: std.ArrayList(Header),
+    headers: std.StringArrayHashMap(Header),
     body: []const u8,
+
+    pub fn deinit(self: *Request) void {
+        self.headers.deinit();
+    }
 };
 
 pub const Response = struct {
     version: Version,
     status: StatusCode,
     reason: []const u8,
-    headers: std.ArrayList(Header),
+    headers: std.StringArrayHashMap(Header),
     body: []const u8,
+
+    pub fn deinit(self: *Response, allocator: std.mem.Allocator) void {
+        for (self.headers.values()) |header| {
+            if (header.alloc) {
+                allocator.free(header.value);
+            }
+        }
+        self.headers.deinit();
+    }
 };
 
 pub const Header = struct {
-    name: []const u8,
+    value: []const u8,
+    alloc: bool = false,
+};
+
+pub const QueryParam = struct {
+    key: []const u8,
     value: []const u8,
 };
 
