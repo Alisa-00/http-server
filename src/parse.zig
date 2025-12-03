@@ -6,8 +6,18 @@ pub const ParseError = error{
     InvalidMethod,
     InvalidHeader,
     UnsupportedVersion,
-    OutOfMemory,
+    HeaderTooLong,
 };
+
+const valid_chars = [_]u8{ '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~' };
+
+fn isInvalidMethodOrHeader(str: []const u8) bool {
+    for (str) |char| {
+        if (std.ascii.isAlphanumeric(char)) continue;
+        _ = std.mem.indexOfScalar(u8, valid_chars[0..], char) orelse return true;
+    }
+    return false;
+}
 
 const SPACE = " ";
 const QUERY_DELIMITER = "?";
@@ -17,7 +27,15 @@ fn parseMethod(str: []const u8, map: http.MethodMap) ParseError!struct { http.Me
     const remaining = str[index + SPACE.len ..];
 
     const method_enum = map.get(method_str) orelse {
-        return ParseError.InvalidMethod;
+        if (std.mem.eql(u8, method_str, "")) {
+            return ParseError.InvalidMethod;
+        }
+
+        if (isInvalidMethodOrHeader(method_str)) {
+            return ParseError.InvalidMethod;
+        }
+
+        return .{ http.Method.OTHER, remaining };
     };
 
     return .{ method_enum, remaining };
@@ -51,10 +69,14 @@ fn parseVersion(str: []const u8, map: http.VersionMap) ParseError!struct { http.
 }
 
 const HEADER_VALUE_SEPARATOR = ":";
+const MAX_HEADER_LENGTH = 100;
 fn parseHeaderLine(str: []const u8) ParseError!struct { []const u8, http.Header } {
+    if (str.len > MAX_HEADER_LENGTH) return ParseError.HeaderTooLong;
+
     const index = std.mem.indexOf(u8, str, HEADER_VALUE_SEPARATOR) orelse return ParseError.InvalidHeader;
     const name = str[0..index];
     const rest = str[index + HEADER_VALUE_SEPARATOR.len ..];
+
     if (std.mem.startsWith(u8, rest, " ")) {
         return .{ name, .{ .value = rest[HEADER_VALUE_SEPARATOR.len..] } };
     }
@@ -70,6 +92,7 @@ pub fn parseHeaders(str: []const u8, allocator: std.mem.Allocator) !struct { std
         const index = std.mem.indexOf(u8, remaining, LINE_DELIMITER) orelse return ParseError.InvalidRequest;
         const line = remaining[0..index];
         const name, const header = try parseHeaderLine(line);
+        if (isInvalidMethodOrHeader(name)) return ParseError.InvalidHeader;
         try header_list.put(name, header);
         if (std.ascii.eqlIgnoreCase(name, "content-length")) content_length = try std.fmt.parseInt(isize, header.value, 10);
         remaining = remaining[index + LINE_DELIMITER.len ..];
@@ -179,7 +202,8 @@ test "parse http methods test" {
         const FULL_REQUEST = try std.mem.concat(test_allocator, u8, slices);
         defer test_allocator.free(FULL_REQUEST);
 
-        try std.testing.expectError(ParseError.InvalidMethod, parseMethod(FULL_REQUEST, map));
+        const m = try parseMethod(FULL_REQUEST, map);
+        try std.testing.expectEqual(http.Method.OTHER, m.@"0");
         std.debug.print("SUCCESS\n", .{});
     }
 

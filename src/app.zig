@@ -63,17 +63,17 @@ fn initResponse(allocator: std.mem.Allocator) !http.Response {
         .version = http.HTTP_VERSION,
         .status = DEFAULT_STATUS_CODE,
         .reason = DEFAULT_REASON,
-        .headers = std.StringArrayHashMap(http.Header).init(allocator),
+        .headers = http.HeaderCollection{ .map = std.StringArrayHashMap(http.Header).init(allocator) },
         .body = DEFAULT_BODY,
     };
 
     const ts: u64 = @intCast(std.time.timestamp());
     const date_string = try formatDate(ts, allocator);
 
-    try response.headers.put("Date", http.Header{ .value = date_string, .alloc = true });
-    try response.headers.put("Server", http.Header{ .value = "ZigTTP" });
-    try response.headers.put("Connection", http.Header{ .value = "read from req" });
-    try response.headers.put("Host", http.Header{ .value = "parse from req" });
+    try response.headers.map.put("Date", http.Header{ .value = date_string, .alloc = true });
+    try response.headers.map.put("Server", http.Header{ .value = "ZigTTP" });
+    try response.headers.map.put("Connection", http.Header{ .value = "read from req" });
+    try response.headers.map.put("Host", http.Header{ .value = "parse from req" });
 
     return response;
 }
@@ -109,7 +109,7 @@ pub fn handleHead(request: http.Request, allocator: std.mem.Allocator) !http.Res
 
     _ = std.fmt.bufPrint(buf[0..], "{d}", .{stat.size}) catch unreachable;
 
-    try resp.headers.put("Content-Length", http.Header{ .value = buf, .alloc = true });
+    try resp.headers.map.put("Content-Length", http.Header{ .value = buf, .alloc = true });
 
     return resp;
 }
@@ -145,18 +145,18 @@ test "HEAD request" {
     try std.testing.expectEqualStrings("OK", res.reason);
     try std.testing.expectEqualStrings("", res.body);
 
-    var test_headers = std.StringArrayHashMap(http.Header).init(allocator);
-    try test_headers.put("Date", http.Header{ .value = "Sat, 25 Nov 2025 10:12:30 GMT" });
-    try test_headers.put("Server", http.Header{ .value = "ZigTTP" });
-    try test_headers.put("Connection", http.Header{ .value = "read from req" });
-    try test_headers.put("Host", http.Header{ .value = "parse from req" });
-    try test_headers.put("Content-Length", http.Header{ .value = "411740" });
-    defer test_headers.deinit();
+    const test_headers = &[_]http.Header{
+        .{ .name = "Date", .value = "Sat, 25 Nov 2025 10:12:30 GMT" },
+        .{ .name = "Server", .value = "ZigTTP" },
+        .{ .name = "Connection", .value = "read from req" },
+        .{ .name = "Host", .value = "parse from req" },
+        .{ .name = "Content-Length", .value = "411740" },
+    };
 
-    for (res.headers.keys(), test_headers.keys()) |parsed_header, test_header| {
-        std.debug.print("{s}: {s}\n", .{ parsed_header, res.headers.get(parsed_header).?.value });
-        if (std.ascii.eqlIgnoreCase(test_header, "Date")) continue;
-        try std.testing.expectEqualStrings(test_header, parsed_header);
-        try std.testing.expectEqualStrings(test_headers.get(test_header).?.value, res.headers.get(parsed_header).?.value);
+    for (res.headers.map.keys(), test_headers) |parsed_header, test_header| {
+        std.debug.print("{s}: {s}\n", .{ parsed_header, res.headers.map.get(parsed_header).?.value });
+        if (std.ascii.eqlIgnoreCase(test_header.name.?, "Date")) continue;
+        try std.testing.expectEqualStrings(test_header.name.?, parsed_header);
+        try std.testing.expectEqualStrings(test_header.value, res.headers.map.get(parsed_header).?.value);
     }
 }

@@ -1,7 +1,7 @@
 const std = @import("std");
 const parse = @import("parse.zig");
 const http = @import("http.zig");
-const app = @import("app.zig");
+const handler = @import("handler.zig");
 
 pub fn main() !void {
     var out_buffer: [1024]u8 = undefined;
@@ -23,10 +23,8 @@ pub fn main() !void {
         "\r\n" ++
         "THIS IS THE BODY\r\n";
 
-    var method_map = try http.initMethodMap(allocator);
-    defer method_map.deinit();
-    var version_map = try http.initVersionMap(allocator);
-    defer version_map.deinit();
+    const method_map = try http.initMethodMap(allocator);
+    const version_map = try http.initVersionMap(allocator);
 
     const request = try parse.parseRequest(REQUEST, allocator, method_map, version_map);
 
@@ -37,23 +35,11 @@ pub fn main() !void {
 
     try stdout.print("\nBODY:\n{s}", .{request.body});
 
-    const response = switch (request.method) {
-        .GET => try app.handleGet(request, allocator),
-        .POST => try app.handlePost(request, allocator),
-        .PUT => try app.handlePut(request, allocator),
-        .DELETE => try app.handleDelete(request, allocator),
-        .PATCH => try app.handlePatch(request, allocator),
-        .OPTIONS => try app.handleOptions(request, allocator),
-        .HEAD => try app.handleHead(request, allocator),
-        .TRACE => try app.handleTrace(request, allocator),
-        .CONNECT => try app.handleConnect(request, allocator),
-        .OTHER => try app.handleOther(request, allocator),
-    };
+    const response = try handler.handle(allocator, request);
 
     try stdout.print("\n\n\nVERSION: {s}\nSTATUS: {s}\nREASON: {s}\n\nHEADERS:\n", .{ @tagName(response.version), @tagName(response.status), response.reason });
-    for (response.headers.keys()) |name| {
-        try stdout.print("{s}: {s}\n", .{ name, response.headers.get(name).?.value });
-    }
+
+    try http.writeHeaders(stdout, response.headers);
 
     try stdout.print("\nBODY:\n{s}", .{response.body});
 
@@ -62,6 +48,6 @@ pub fn main() !void {
 
 test {
     _ = @import("parse.zig");
-    _ = @import("methods.zig");
+    _ = @import("handler.zig");
     _ = @import("app.zig");
 }

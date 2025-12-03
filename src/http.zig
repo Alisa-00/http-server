@@ -32,13 +32,17 @@ pub fn initMethodMap(allocator: std.mem.Allocator) !MethodMap {
 }
 
 pub const Version = enum {
+    HTTP_09,
+    HTTP_10,
     HTTP_11,
+    HTTP_20,
+    HTTP_30,
 };
 
 pub const HTTP_VERSION = Version.HTTP_11;
 
 pub const VersionMap = std.StringHashMap(Version);
-pub const version_http_strings = [_][]const u8{"HTTP/1.1"}; //, "HTTP/2.0", "HTTP/3.0" };
+pub const version_http_strings = [_][]const u8{ "HTTP/0.9", "HTTP/1.0", "HTTP/1.1", "HTTP/2.0", "HTTP/3.0" };
 
 pub const version_enum_strings = blk: {
     const version_fields = @typeInfo(Version).@"enum".fields;
@@ -75,28 +79,45 @@ pub const Response = struct {
     version: Version,
     status: StatusCode,
     reason: []const u8,
-    headers: std.StringArrayHashMap(Header),
+    headers: HeaderCollection,
     body: []const u8,
 
     pub fn deinit(self: *Response, allocator: std.mem.Allocator) void {
-        for (self.headers.values()) |header| {
+        for (self.headers.map.values()) |header| {
             if (header.alloc) {
                 allocator.free(header.value);
             }
         }
-        self.headers.deinit();
+        self.headers.map.deinit();
     }
 };
 
 pub const Header = struct {
+    name: ?[]const u8 = null,
     value: []const u8,
     alloc: bool = false,
 };
 
-pub const QueryParam = struct {
-    key: []const u8,
-    value: []const u8,
+pub const HeaderCollection = union(enum) {
+    map: std.StringArrayHashMap(Header),
+    slice: []const Header,
 };
+
+pub fn writeHeaders(writer: *std.Io.Writer, h: HeaderCollection) !void {
+    switch (h) {
+        .slice => |s| {
+            for (s) |hdr| {
+                try writer.print("{s}: {s}\r\n", .{ hdr.name.?, hdr.value });
+            }
+        },
+        .map => |*m| {
+            var it = m.iterator();
+            while (it.next()) |entry| {
+                try writer.print("{s}: {s}\r\n", .{ entry.key_ptr.*, entry.value_ptr.value });
+            }
+        },
+    }
+}
 
 pub const StatusCode = enum {
     HTTP_200,
@@ -104,7 +125,9 @@ pub const StatusCode = enum {
     HTTP_302,
     HTTP_400,
     HTTP_404,
+    HTTP_413,
     HTTP_500,
     HTTP_503,
+    HTTP_505,
     Other,
 };
