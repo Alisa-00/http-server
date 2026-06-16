@@ -12,63 +12,47 @@ pub const Method = enum {
     CONNECT,
     OTHER,
 };
-pub const MethodMap = std.StringHashMap(Method);
-
-pub const method_strings = blk: {
-    const method_fields = @typeInfo(Method).@"enum".fields;
-    var arr: [method_fields.len][]const u8 = undefined;
-    for (method_fields, 0..) |field, i| {
-        arr[i] = field.name;
-    }
-    break :blk arr;
-};
-
-pub fn initMethodMap(allocator: std.mem.Allocator) !MethodMap {
-    var method_map = MethodMap.init(allocator);
-    for (method_strings, 0..) |name, i| {
-        try method_map.put(name, @enumFromInt(i));
-    }
-    return method_map;
-}
 
 pub const Version = enum {
-    HTTP_09,
-    HTTP_10,
-    HTTP_11,
-    HTTP_20,
-    HTTP_30,
+    @"HTTP/1.1",
 };
 
-pub const HTTP_VERSION = Version.HTTP_11;
-
-pub const VersionMap = std.StringHashMap(Version);
-pub const version_http_strings = [_][]const u8{ "HTTP/0.9", "HTTP/1.0", "HTTP/1.1", "HTTP/2.0", "HTTP/3.0" };
-
-pub const version_enum_strings = blk: {
-    const version_fields = @typeInfo(Version).@"enum".fields;
-    var arr: [version_fields.len][]const u8 = undefined;
-    for (version_fields, 0..) |field, i| {
-        arr[i] = field.name;
-    }
-    break :blk arr;
+pub const StatusCode = enum(u32) {
+    HTTP_200 = 200,
+    HTTP_202 = 202,
+    HTTP_302 = 302,
+    HTTP_400 = 400,
+    HTTP_404 = 404,
+    HTTP_413 = 413,
+    HTTP_500 = 500,
+    HTTP_503 = 503,
+    HTTP_505 = 505,
+    Other,
 };
 
-pub fn initVersionMap(allocator: std.mem.Allocator) !VersionMap {
-    var version_map = VersionMap.init(allocator);
-    for (version_http_strings, 0..) |name, i| {
-        try version_map.put(name, @enumFromInt(i));
-    }
-
-    return version_map;
-}
+pub const HTTP_VERSION = Version.@"HTTP/1.1";
+const DEFAULT_STATUS_CODE = StatusCode.HTTP_200;
+const DEFAULT_BODY = "";
+const DEFAULT_REASON = "";
 
 pub const Request = struct {
     method: Method,
     path: []const u8,
     query: []const u8,
     version: Version,
-    headers: std.StringArrayHashMap(Header),
+    headers: std.array_hash_map.String(Header),
     body: []const u8,
+
+    pub fn init() Request {
+        return Request{
+            .method = Method.GET,
+            .path = "/",
+            .query = "",
+            .version = Version.@"HTTP/1.1",
+            .headers = .empty,
+            .body = "",
+        };
+    }
 
     pub fn deinit(self: *Request) void {
         self.headers.deinit();
@@ -82,6 +66,30 @@ pub const Response = struct {
     headers: HeaderCollection,
     body: []const u8,
 
+    pub fn init(allocator: std.mem.Allocator) !Response {
+        var response = Response{
+            .version = HTTP_VERSION,
+            .status = DEFAULT_STATUS_CODE,
+            .reason = DEFAULT_REASON,
+            .headers = HeaderCollection{ .map = .empty },
+            .body = DEFAULT_BODY,
+        };
+
+        //const ts: u64 = @intCast(std.time.timestamp());
+        //const date_string = "Tue, 29 Oct 2024 16:56:32 GMT"; //try formatDate(ts, allocator);
+
+        //const date = try response.headers.map.getOrPut(allocator, "Date");
+        //date.value_ptr.value = date_string;
+        const server = try response.headers.map.getOrPut(allocator, "Server");
+        server.value_ptr.value = "ZigTTP";
+        //const connection = try response.headers.map.getOrPut(allocator, "Connection");
+        //connection.value_ptr.value = "Read this value from request";
+        //const host = try response.headers.map.getOrPut(allocator, "Host");
+        //host.value_ptr.value = "Read this value from request";
+
+        return response;
+    }
+
     pub fn deinit(self: *Response, allocator: std.mem.Allocator) void {
         for (self.headers.map.values()) |header| {
             if (header.alloc) {
@@ -89,6 +97,27 @@ pub const Response = struct {
             }
         }
         self.headers.map.deinit();
+    }
+
+    pub fn addHeader(self: *Response, allocator: std.mem.Allocator, name: []const u8, value: []const u8) !void {
+        const header = try self.headers.map.getOrPut(allocator, name);
+        header.value_ptr.value = value;
+    }
+
+    pub fn toString(self: *Response, allocator: std.mem.Allocator) ![]u8 {
+        var out_string: std.ArrayList(u8) = .empty;
+        const first_line = try std.fmt.allocPrint(allocator, "{s} {d} {s}\r\n", .{ @tagName(self.version), @intFromEnum(self.status), self.reason });
+        try out_string.appendSlice(allocator, first_line);
+        for (self.headers.map.keys()) |header| {
+            const value = self.headers.map.get(header).?.value;
+            const header_line = try std.fmt.allocPrint(allocator, "{s}: {s}\r\n", .{ header, value });
+            try out_string.appendSlice(allocator, header_line);
+        }
+        const empty_line = "\r\n";
+        try out_string.appendSlice(allocator, empty_line);
+        try out_string.appendSlice(allocator, self.body);
+
+        return out_string.items;
     }
 };
 
@@ -99,7 +128,7 @@ pub const Header = struct {
 };
 
 pub const HeaderCollection = union(enum) {
-    map: std.StringArrayHashMap(Header),
+    map: std.array_hash_map.String(Header),
     slice: []const Header,
 };
 
@@ -118,16 +147,3 @@ pub fn writeHeaders(writer: *std.Io.Writer, h: HeaderCollection) !void {
         },
     }
 }
-
-pub const StatusCode = enum {
-    HTTP_200,
-    HTTP_202,
-    HTTP_302,
-    HTTP_400,
-    HTTP_404,
-    HTTP_413,
-    HTTP_500,
-    HTTP_503,
-    HTTP_505,
-    Other,
-};

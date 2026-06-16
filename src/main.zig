@@ -1,53 +1,77 @@
 const std = @import("std");
-const parse = @import("parse.zig");
 const http = @import("http.zig");
-const handler = @import("handler.zig");
+const parse = @import("parse.zig");
 
-pub fn main() !void {
-    var out_buffer: [1024]u8 = undefined;
-    var out_writer = std.fs.File.stdout().writer(&out_buffer);
-    const stdout = &out_writer.interface;
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    const arena = init.arena.allocator();
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    // You can use print statements as follows for debugging, they'll be visible when running tests.
+    try std.Io.File.writeStreamingAll(std.Io.File.stderr(), io, "Logs from your program will appear here!\n");
 
-    const REQUEST =
-        "GET /src/index.html?name=test HTTP/1.1\r\n" ++
-        "Host:localhost:8080\r\n" ++
-        "User-Agent:curl/8.7.1\r\n" ++
-        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" ++
-        "Accept-Encoding: gzip, deflate\r\n" ++
-        "Connection: keep-alive\r\n" ++
-        "Content-Length: 15\r\n" ++
-        "\r\n" ++
-        "THIS IS THE BODY\r\n";
+    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 4221);
+    var server = try address.listen(io, .{
+        .reuse_address = true,
+    });
+    defer server.deinit(io);
 
-    const method_map = try http.initMethodMap(allocator);
-    const version_map = try http.initVersionMap(allocator);
+    var connection = try server.accept(io);
 
-    const request = try parse.parseRequest(REQUEST, allocator, method_map, version_map);
+    // BEFORE MOVING ON
+    // - http module with request / response definitions and constructors
+    // - parse module to read requests and return http req object
+    // - figure out main init IO and etc
+    // - prepare an arena allocator, allocation strategy is simple this way
 
-    try stdout.print("METHOD: {s}\nPATH: {s}\nQUERY: {s}\nVERSION: {s}\n\nHEADERS:\n", .{ @tagName(request.method), request.path, request.query, @tagName(request.version) });
-    for (request.headers.keys()) |name| {
-        try stdout.print("{s}: {s}\n", .{ name, request.headers.get(name).?.value });
-    }
+    std.debug.print("client connected!\n", .{});
 
-    try stdout.print("\nBODY:\n{s}", .{request.body});
+    var writer_buffer: [1024]u8 = undefined;
+    var reader_buffer: [1024]u8 = undefined;
+    @memset(&writer_buffer, 0);
+    @memset(&reader_buffer, 0);
 
-    const response = try handler.handle(allocator, request);
+    var writer = connection.writer(io, &writer_buffer);
+    var reader = connection.reader(io, &reader_buffer);
+    const stream_out = &writer.interface;
+    const stream_in = &reader.interface;
 
-    try stdout.print("\n\n\nVERSION: {s}\nSTATUS: {s}\nREASON: {s}\n\nHEADERS:\n", .{ @tagName(response.version), @tagName(response.status), response.reason });
+    const request = try parse.parseRequest(arena, stream_in);
 
-    try http.writeHeaders(stdout, response.headers);
-
-    try stdout.print("\nBODY:\n{s}", .{response.body});
-
-    try stdout.flush();
+    var response = try handleRequest(request, arena);
+    const response_string = try response.toString(arena);
+    try stream_out.print("{s}", .{response_string});
+    try stream_out.flush();
 }
 
-test {
-    _ = @import("parse.zig");
-    _ = @import("handler.zig");
-    _ = @import("app.zig");
+fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Response {
+    std.debug.print("REQUEST: {s} {s} {s}\n", .{ @tagName(request.method), request.path, @tagName(request.version) });
+
+    var response = try http.Response.init(allocator);
+    response.version = http.Version.@"HTTP/1.1";
+    response.status = http.StatusCode.HTTP_200;
+    response.reason = "OK";
+
+    if (std.ascii.eqlIgnoreCase(request.path, "/")) return response;
+
+    const endpoint_start = 1; // Assumes target starts with '/' and is more than just '/'
+    const endpoint_end = std.ascii.findIgnoreCasePos(request.path, 1, "/") orelse (request.path.len); // find next '/'
+    const endpoint = request.path[endpoint_start..endpoint_end];
+    var content: []const u8 = "";
+    if (endpoint_end != request.path.len) {
+        content = request.path[endpoint_end + 1 ..];
+    }
+
+    std.debug.print("Endpoint: {s} Start: {d} End: {d}\nContent: {s}\n", .{ endpoint, endpoint_start, endpoint_end, content });
+
+    if (std.ascii.eqlIgnoreCase(endpoint, "echo")) {
+        try response.addHeader(allocator, "Content-Type", "text/plain");
+        const length_string = try std.fmt.allocPrint(allocator, "{d}", .{content.len});
+        try response.addHeader(allocator, "Content-Length", length_string);
+        response.body = content;
+    } else {
+        //try stream_out.print("HTTP/1.1 404 Not Found\r\n\r\n", .{});
+        response.status = http.StatusCode.HTTP_404;
+        response.reason = "Not Found";
+    }
+    return response;
 }
