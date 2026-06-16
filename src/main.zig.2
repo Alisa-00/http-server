@@ -1,0 +1,118 @@
+const std = @import("std");
+
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+
+    // You can use print statements as follows for debugging, they'll be visible when running tests.
+    try std.Io.File.writeStreamingAll(std.Io.File.stderr(), io, "Logs from your program will appear here!\n");
+
+    // TODO: Uncomment the code below to pass the first stage
+    //
+    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 4221);
+    var server = try address.listen(io, .{
+        .reuse_address = true,
+    });
+    defer server.deinit(io);
+
+    var connection = try server.accept(io);
+
+    // BEFORE MOVING ON
+    // - http module with request / response definitions and constructors
+    // - parse module to read requests and return http req object
+    // - figure out main init IO and etc
+    // - prepare an arena allocator, allocation strategy is simple this way
+
+    std.debug.print("client connected!\n", .{});
+
+    var writer_buffer: [1024]u8 = undefined;
+    var reader_buffer: [1024]u8 = undefined;
+    @memset(&writer_buffer, 0);
+    @memset(&reader_buffer, 0);
+
+    var writer = connection.writer(io, &writer_buffer);
+    var reader = connection.reader(io, &reader_buffer);
+    const stream_out = &writer.interface;
+    const stream_in = &reader.interface;
+
+    const request = try readRequest(stream_in);
+
+    try handleConnection(io, &connection);
+
+}
+
+fn readRequest(reader: *std.Io.Reader) !http.Request {
+    const method_opt = try stream_in.takeDelimiter(' ');
+    const method = method_opt orelse  return error.MalformedRequest;
+    const target_opt = try stream_in.takeDelimiter(' ');
+    const target = target_opt orelse return error.MalformedRequest;
+    const version_opt = try stream_in.takeDelimiter('\n');
+    const version = version_opt orelse return error.MalformedRequest;
+
+    std.debug.print("REQUEST: {s} {s} {s}\n", .{method, target, version});
+
+    if (std.ascii.eqlIgnoreCase(target, "/")) {
+        const request = http.Request(method, target, version);
+        return request;
+    }
+
+    const endpoint_start = 1; // Assumes target starts with '/' and is more than just '/'
+    const endpoint_end = std.ascii.findIgnoreCasePos(target, 1, "/") orelse (target.len); // find next '/'
+    const endpoint = target[endpoint_start..endpoint_end];
+    var content: []const u8 = "";
+    if (endpoint_end != target.len) {
+        content = target[endpoint_end+1..];
+    }
+
+}
+
+fn handleConnection(io: std.Io, connection: *std.Io.net.Stream) !void {
+    std.debug.print("client connected!\n", .{});
+
+    var writer_buffer: [1024]u8 = undefined;
+    var reader_buffer: [1024]u8 = undefined;
+    @memset(&writer_buffer, 0);
+    @memset(&reader_buffer, 0);
+
+    var writer = connection.writer(io, &writer_buffer);
+    var reader = connection.reader(io, &reader_buffer);
+    const stream_out = &writer.interface;
+    const stream_in = &reader.interface;
+
+    const methodOptional = try stream_in.takeDelimiter(' ');
+    const method = methodOptional orelse { try handleMalformedRequest(stream_out); return error.MalformedRequest; };
+    const targetOptional = try stream_in.takeDelimiter(' ');
+    const target = targetOptional orelse { try handleMalformedRequest(stream_out); return error.MalformedRequest; };
+    const versionOptional = try stream_in.takeDelimiter('\n');
+    const version = versionOptional orelse { try handleMalformedRequest(stream_out); return error.MalformedRequest; };
+
+    std.debug.print("REQUEST: {s} {s} {s}\n", .{method, target, version});
+
+    if (std.ascii.eqlIgnoreCase(target, "/")) {
+        try stream_out.print("HTTP/1.1 200 OK\r\n\r\n", .{});
+        try stream_out.flush();
+        return;
+    }
+
+    const endpoint_start = 1; // Assumes target starts with '/' and is more than just '/'
+    const endpoint_end = std.ascii.findIgnoreCasePos(target, 1, "/") orelse (target.len); // find next '/'
+    const endpoint = target[endpoint_start..endpoint_end];
+    var content: []const u8 = "";
+    if (endpoint_end != target.len) {
+        content = target[endpoint_end+1..];
+    }
+
+    std.debug.print("Endpoint: {s} Start: {d} End: {d}\nContent: {s}\n", .{endpoint, endpoint_start, endpoint_end, content});
+
+    if (std.ascii.eqlIgnoreCase(endpoint, "echo")) {
+        try stream_out.print("HTTP/1.1 200 OK\r\nContent-Type: {s}\r\nContent-Length: {d}\r\n\r\n{s}", .{"text/plain", content.len, content});
+    }
+    else {
+        try stream_out.print("HTTP/1.1 404 Not Found\r\n\r\n", .{});
+    }
+    try stream_out.flush();
+
+}
+
+fn handleMalformedRequest(stream_out: *std.Io.Writer) !void {
+    try stream_out.print("HTTP/1.1 400 Bad Request\r\n\r\n", .{});
+}
