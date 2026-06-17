@@ -31,6 +31,7 @@ pub const StatusCode = enum(u32) {
 };
 
 pub const HTTP_VERSION = Version.@"HTTP/1.1";
+pub const MAX_BODY_SIZE = 4000;
 const DEFAULT_STATUS_CODE = StatusCode.HTTP_200;
 const DEFAULT_BODY = "";
 const DEFAULT_REASON = "";
@@ -54,8 +55,18 @@ pub const Request = struct {
         };
     }
 
-    pub fn deinit(self: *Request) void {
-        self.headers.deinit();
+    pub fn deinit(self: *Request, allocator: std.mem.Allocator) void {
+        self.headers.deinit(allocator);
+    }
+
+    pub fn addHeader(self: *Request, allocator: std.mem.Allocator, name: []const u8, value: []const u8) !bool {
+        const name_lowercase = try std.ascii.allocLowerString(allocator, name);
+        if (self.headers.contains(name_lowercase)) {
+            return false;
+        }
+
+        try self.headers.put(allocator, name_lowercase, value);
+        return true;
     }
 };
 

@@ -50,21 +50,36 @@ fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Resp
     const endpoint_start = 1;
     const endpoint_end = std.ascii.findIgnoreCasePos(request.path, 1, "/") orelse (request.path.len); // find next '/'
     const endpoint = request.path[endpoint_start..endpoint_end];
-    var content: []const u8 = "";
+    var query_content: []const u8 = "";
     if (endpoint_end != request.path.len) {
-        content = request.path[endpoint_end + 1 ..];
+        query_content = request.path[endpoint_end + 1 ..];
     }
 
-    std.debug.print("Endpoint: {s} Start: {d} End: {d}\nContent: {s}\n", .{ endpoint, endpoint_start, endpoint_end, content });
+    std.debug.print("Endpoint: {s} Start: {d} End: {d}\nContent: {s}\n", .{ endpoint, endpoint_start, endpoint_end, query_content });
 
     if (std.ascii.eqlIgnoreCase(endpoint, "echo")) {
         try response.addHeader(allocator, "Content-Type", "text/plain");
-        const length_string = try std.fmt.allocPrint(allocator, "{d}", .{content.len});
-        try response.addHeader(allocator, "Content-Length", length_string);
-        response.body = content;
-    } else {
-        response.status = http.StatusCode.HTTP_404;
-        response.reason = "Not Found";
+        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{query_content.len});
+        try response.addHeader(allocator, "Content-Length", content_length);
+        response.body = query_content;
     }
+
+    if (std.ascii.eqlIgnoreCase(endpoint, "user-agent")) {
+        const header_content = request.headers.get("User-Agent") orelse {
+            response.status = http.StatusCode.HTTP_400;
+            response.reason = "Bad Request";
+            response.body = "Missing User-Agent header";
+            return response;
+        };
+
+        _ = try response.addHeader(allocator, "Content-Type", "text/plain");
+        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{header_content.len});
+        _ = try response.addHeader(allocator, "Content-Length", content_length);
+        response.body = header_content;
+    }
+
+    response.status = http.StatusCode.HTTP_404;
+    response.reason = "Not Found";
+
     return response;
 }
