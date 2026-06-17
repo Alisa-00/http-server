@@ -29,17 +29,26 @@ pub fn main(init: std.process.Init) !void {
     const stream_out = &writer.interface;
     const stream_in = &reader.interface;
 
+    std.debug.print("About to read request!\n", .{});
+
     const request = try parse.parseRequest(arena, stream_in);
+
+    std.debug.print("REQUEST READ:\n{s} {s} {s}\n", .{ @tagName(request.method), request.path, @tagName(request.version) });
+
+    for (request.headers.keys()) |header| {
+        const value = request.headers.get(header).?;
+        std.debug.print("{s}: {s}\n", .{ header, value });
+    }
+    std.debug.print("{s}\n", .{request.body});
 
     var response = try handleRequest(request, arena);
     const response_string = try response.toString(arena);
+    std.debug.print("OUTGOING RESPONSE: {s}\n", .{response_string});
     try stream_out.print("{s}", .{response_string});
     try stream_out.flush();
 }
 
 fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Response {
-    std.debug.print("REQUEST: {s} {s} {s}\n", .{ @tagName(request.method), request.path, @tagName(request.version) });
-
     var response = try http.Response.init(allocator);
     response.version = http.Version.@"HTTP/1.1";
     response.status = http.StatusCode.HTTP_200;
@@ -62,10 +71,11 @@ fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Resp
         const content_length = try std.fmt.allocPrint(allocator, "{d}", .{query_content.len});
         try response.addHeader(allocator, "Content-Length", content_length);
         response.body = query_content;
+        return response;
     }
 
     if (std.ascii.eqlIgnoreCase(endpoint, "user-agent")) {
-        const header_content = request.headers.get("User-Agent") orelse {
+        const header_content = request.headers.get("user-agent") orelse {
             response.status = http.StatusCode.HTTP_400;
             response.reason = "Bad Request";
             response.body = "Missing User-Agent header";
@@ -76,6 +86,7 @@ fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Resp
         const content_length = try std.fmt.allocPrint(allocator, "{d}", .{header_content.len});
         _ = try response.addHeader(allocator, "Content-Length", content_length);
         response.body = header_content;
+        return response;
     }
 
     response.status = http.StatusCode.HTTP_404;

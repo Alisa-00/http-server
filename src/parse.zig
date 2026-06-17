@@ -40,19 +40,22 @@ fn parseVersion(reader: *std.Io.Reader) !http.Version {
 }
 
 fn parseHeaderName(reader: *std.Io.Reader) ![]const u8 {
-    const end_distance = try reader.peekDelimiterExclusive('\n');
-    const header_distance = try reader.peekDelimiterExclusive(':');
-
-    if (end_distance.len > header_distance.len) {
+    const endline_string = try reader.peekDelimiterExclusive('\n');
+    const separator_position = std.ascii.findIgnoreCase(endline_string, ":");
+    if (separator_position) |_| {
         const name = try reader.takeDelimiter(':') orelse return ParseError.InvalidRequest;
         return name;
     }
 
-    return try parseNewline(reader);
+    const empty_line = try parseNewline(reader);
+    return empty_line;
 }
 
 fn parseHeaderValue(reader: *std.Io.Reader) ![]const u8 {
     const value = try parseNewline(reader);
+    if (value[0] == ' ') {
+        return value[1..];
+    }
     return value;
 }
 

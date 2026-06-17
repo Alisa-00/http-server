@@ -89,14 +89,14 @@ pub const Response = struct {
         //const ts: u64 = @intCast(std.time.timestamp());
         //const date_string = "Tue, 29 Oct 2024 16:56:32 GMT"; //try formatDate(ts, allocator);
 
-        //const date = try response.headers.map.getOrPut(allocator, "Date");
-        //date.value_ptr.value = date_string;
-        const server = try response.headers.getOrPut(allocator, "Server");
-        server.value_ptr.* = "ZigTTP";
-        //const connection = try response.headers.map.getOrPut(allocator, "Connection");
-        //connection.value_ptr.value = "Read this value from request";
-        //const host = try response.headers.map.getOrPut(allocator, "Host");
-        //host.value_ptr.value = "Read this value from request";
+        //const date = try response.headers.getOrPut(allocator, "Date");
+        //date.value_ptr.* = date_string;
+        //const server = try response.headers.getOrPut(allocator, "Server");
+        //server.value_ptr.* = "ZigTTP";
+        const connection = try response.headers.getOrPut(allocator, "Connection");
+        connection.value_ptr.* = "Read this value from request";
+        //const host = try response.headers.getOrPut(allocator, "Host");
+        //host.value_ptr.* = "Read this value from request";
 
         return response;
     }
