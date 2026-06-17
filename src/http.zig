@@ -40,7 +40,7 @@ pub const Request = struct {
     path: []const u8,
     query: []const u8,
     version: Version,
-    headers: std.array_hash_map.String(Header),
+    headers: std.array_hash_map.String([]const u8),
     body: []const u8,
 
     pub fn init() Request {
@@ -63,7 +63,7 @@ pub const Response = struct {
     version: Version,
     status: StatusCode,
     reason: []const u8,
-    headers: HeaderCollection,
+    headers: std.array_hash_map.String([]const u8),
     body: []const u8,
 
     pub fn init(allocator: std.mem.Allocator) !Response {
@@ -71,7 +71,7 @@ pub const Response = struct {
             .version = HTTP_VERSION,
             .status = DEFAULT_STATUS_CODE,
             .reason = DEFAULT_REASON,
-            .headers = HeaderCollection{ .map = .empty },
+            .headers = .empty,
             .body = DEFAULT_BODY,
         };
 
@@ -80,8 +80,8 @@ pub const Response = struct {
 
         //const date = try response.headers.map.getOrPut(allocator, "Date");
         //date.value_ptr.value = date_string;
-        const server = try response.headers.map.getOrPut(allocator, "Server");
-        server.value_ptr.value = "ZigTTP";
+        const server = try response.headers.getOrPut(allocator, "Server");
+        server.value_ptr.* = "ZigTTP";
         //const connection = try response.headers.map.getOrPut(allocator, "Connection");
         //connection.value_ptr.value = "Read this value from request";
         //const host = try response.headers.map.getOrPut(allocator, "Host");
@@ -91,25 +91,23 @@ pub const Response = struct {
     }
 
     pub fn deinit(self: *Response, allocator: std.mem.Allocator) void {
-        for (self.headers.map.values()) |header| {
-            if (header.alloc) {
-                allocator.free(header.value);
-            }
+        for (self.headers.values()) |header| {
+            allocator.free(header);
         }
-        self.headers.map.deinit();
+        self.headers.deinit();
     }
 
     pub fn addHeader(self: *Response, allocator: std.mem.Allocator, name: []const u8, value: []const u8) !void {
-        const header = try self.headers.map.getOrPut(allocator, name);
-        header.value_ptr.value = value;
+        const header = try self.headers.getOrPut(allocator, name);
+        header.value_ptr.* = value;
     }
 
     pub fn toString(self: *Response, allocator: std.mem.Allocator) ![]u8 {
         var out_string: std.ArrayList(u8) = .empty;
         const first_line = try std.fmt.allocPrint(allocator, "{s} {d} {s}\r\n", .{ @tagName(self.version), @intFromEnum(self.status), self.reason });
         try out_string.appendSlice(allocator, first_line);
-        for (self.headers.map.keys()) |header| {
-            const value = self.headers.map.get(header).?.value;
+        for (self.headers.keys()) |header| {
+            const value = self.headers.get(header).?;
             const header_line = try std.fmt.allocPrint(allocator, "{s}: {s}\r\n", .{ header, value });
             try out_string.appendSlice(allocator, header_line);
         }
@@ -120,30 +118,3 @@ pub const Response = struct {
         return out_string.items;
     }
 };
-
-pub const Header = struct {
-    name: ?[]const u8 = null,
-    value: []const u8,
-    alloc: bool = false,
-};
-
-pub const HeaderCollection = union(enum) {
-    map: std.array_hash_map.String(Header),
-    slice: []const Header,
-};
-
-pub fn writeHeaders(writer: *std.Io.Writer, h: HeaderCollection) !void {
-    switch (h) {
-        .slice => |s| {
-            for (s) |hdr| {
-                try writer.print("{s}: {s}\r\n", .{ hdr.name.?, hdr.value });
-            }
-        },
-        .map => |*m| {
-            var it = m.iterator();
-            while (it.next()) |entry| {
-                try writer.print("{s}: {s}\r\n", .{ entry.key_ptr.*, entry.value_ptr.value });
-            }
-        },
-    }
-}

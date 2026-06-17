@@ -17,12 +17,6 @@ pub fn main(init: std.process.Init) !void {
 
     var connection = try server.accept(io);
 
-    // BEFORE MOVING ON
-    // - http module with request / response definitions and constructors
-    // - parse module to read requests and return http req object
-    // - figure out main init IO and etc
-    // - prepare an arena allocator, allocation strategy is simple this way
-
     std.debug.print("client connected!\n", .{});
 
     var writer_buffer: [1024]u8 = undefined;
@@ -53,7 +47,7 @@ fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Resp
 
     if (std.ascii.eqlIgnoreCase(request.path, "/")) return response;
 
-    const endpoint_start = 1; // Assumes target starts with '/' and is more than just '/'
+    const endpoint_start = 1;
     const endpoint_end = std.ascii.findIgnoreCasePos(request.path, 1, "/") orelse (request.path.len); // find next '/'
     const endpoint = request.path[endpoint_start..endpoint_end];
     var content: []const u8 = "";
@@ -69,7 +63,6 @@ fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Resp
         try response.addHeader(allocator, "Content-Length", length_string);
         response.body = content;
     } else {
-        //try stream_out.print("HTTP/1.1 404 Not Found\r\n\r\n", .{});
         response.status = http.StatusCode.HTTP_404;
         response.reason = "Not Found";
     }
