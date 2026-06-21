@@ -41,13 +41,6 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("Could not spawn handler:\n{}\n", .{err});
             continue;
         };
-        //errdefer future.cancel(io) catch |err| {
-        //    std.debug.print("Error during connection:\n{}\n", .{err});
-        //};
-        //future.await(io) catch |err| {
-        //    std.debug.print("Error during connection:\n{}\n", .{err});
-        //    continue;
-        //};
     }
 }
 
