@@ -27,6 +27,8 @@ pub fn main(init: std.process.Init) !void {
     const allocator = std.heap.page_allocator;
 
     var connection_id: u32 = 0;
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
 
     while (true) {
         const connection = server.accept(io) catch |err| {
@@ -35,15 +37,25 @@ pub fn main(init: std.process.Init) !void {
         };
 
         connection_id += 1;
-        var future = io.async(handleConnection, .{ io, allocator, connection, connection_id, directory });
-        errdefer _ = future.cancel(io) catch |err| {
-            std.debug.print("Error during connection:\n{}\n", .{err});
+        group.concurrent(io, serveConnection, .{ io, allocator, connection, connection_id, directory }) catch |err| {
+            std.debug.print("Could not spawn handler:\n{}\n", .{err});
+            continue;
         };
+        //errdefer future.cancel(io) catch |err| {
+        //    std.debug.print("Error during connection:\n{}\n", .{err});
+        //};
         //future.await(io) catch |err| {
         //    std.debug.print("Error during connection:\n{}\n", .{err});
         //    continue;
         //};
     }
+}
+
+fn serveConnection(io: std.Io, allocator: std.mem.Allocator, connection: std.Io.net.Stream, id: u32, directory: []u8) void {
+    handleConnection(io, allocator, connection, id, directory) catch |err| switch (err) {
+        error.Canceled => {},
+        else => std.debug.print("Error during connection {d}:\n{}\n", .{ id, err }),
+    };
 }
 
 fn handleConnection(io: std.Io, allocator: std.mem.Allocator, connection: std.Io.net.Stream, conn_id: u32, directory: []u8) !void {
