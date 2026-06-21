@@ -4,7 +4,6 @@ const parse = @import("parse.zig");
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
-    const arena = init.arena.allocator();
 
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     try std.Io.File.writeStreamingAll(std.Io.File.stderr(), io, "Logs from your program will appear here!\n");
@@ -14,27 +13,44 @@ pub fn main(init: std.process.Init) !void {
         .reuse_address = true,
     });
     defer server.deinit(io);
+    const allocator = std.heap.page_allocator;
 
-    var connection = try server.accept(io);
+    var connection_id: u32 = 0;
 
-    std.debug.print("client connected!\n", .{});
+    while (true) {
+        const connection = server.accept(io) catch |err| {
+            std.debug.print("Unable to handle incoming connection!\n{}\n", .{err});
+            continue;
+        };
+
+        connection_id += 1;
+        var future = io.async(handleConnection, .{ io, allocator, connection, connection_id });
+        errdefer _ = future.cancel(io) catch |err| {
+            std.debug.print("Error during connection:\n{}\n", .{err});
+        };
+    }
+}
+
+fn handleConnection(io: std.Io, allocator: std.mem.Allocator, connection: std.Io.net.Stream, conn_id: u32) !void {
+    defer connection.close(io);
+    var arena_allocator = std.heap.ArenaAllocator.init(allocator);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+    std.debug.print("{d} - Client connected!\n", .{conn_id});
 
     var writer_buffer: [1024]u8 = undefined;
     var reader_buffer: [1024]u8 = undefined;
-    @memset(&writer_buffer, 0);
-    @memset(&reader_buffer, 0);
 
     var writer = connection.writer(io, &writer_buffer);
     var reader = connection.reader(io, &reader_buffer);
     const stream_out = &writer.interface;
     const stream_in = &reader.interface;
 
-    std.debug.print("About to read request!\n", .{});
+    std.debug.print("{d} - Reading request!\n", .{conn_id});
 
     const request = try parse.parseRequest(arena, stream_in);
 
-    std.debug.print("REQUEST READ:\n{s} {s} {s}\n", .{ @tagName(request.method), request.path, @tagName(request.version) });
-
+    std.debug.print("{d} - REQUEST PARSED:\n{s} {s} {s}\n", .{ conn_id, @tagName(request.method), request.path, @tagName(request.version) });
     for (request.headers.keys()) |header| {
         const value = request.headers.get(header).?;
         std.debug.print("{s}: {s}\n", .{ header, value });
@@ -43,7 +59,9 @@ pub fn main(init: std.process.Init) !void {
 
     var response = try handleRequest(request, arena);
     const response_string = try response.toString(arena);
-    std.debug.print("OUTGOING RESPONSE: {s}\n", .{response_string});
+
+    std.debug.print("{d} - OUTGOING RESPONSE:\n{s}\n", .{ conn_id, response_string });
+
     try stream_out.print("{s}", .{response_string});
     try stream_out.flush();
 }
@@ -63,8 +81,6 @@ fn handleRequest(request: http.Request, allocator: std.mem.Allocator) !http.Resp
     if (endpoint_end != request.path.len) {
         query_content = request.path[endpoint_end + 1 ..];
     }
-
-    std.debug.print("Endpoint: {s} Start: {d} End: {d}\nContent: {s}\n", .{ endpoint, endpoint_start, endpoint_end, query_content });
 
     if (std.ascii.eqlIgnoreCase(endpoint, "echo")) {
         try response.addHeader(allocator, "Content-Type", "text/plain");
