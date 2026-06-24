@@ -92,6 +92,17 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
     response.status = http.StatusCode.HTTP_200;
     response.reason = "OK";
 
+    if (request.headers.contains("accept-encoding")) {
+        const encodings = request.headers.get("accept-encoding").?;
+        var splits = std.mem.splitScalar(u8, encodings, ',');
+        while (splits.next()) |split| {
+            const encoding = std.mem.trim(u8, split, " ");
+            const is_gzip = std.ascii.eqlIgnoreCase(encoding, "gzip");
+            const is_wildcard = std.ascii.eqlIgnoreCase(encoding, "*");
+            if (is_gzip or is_wildcard) try response.addHeader(allocator, "Content-Encoding", "gzip");
+        }
+    }
+
     if (std.ascii.eqlIgnoreCase(request.path, "/")) return response;
 
     const endpoint_start = 1;
