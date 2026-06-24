@@ -204,7 +204,7 @@ fn compressBody(allocator: std.mem.Allocator, data: []u8, container: std.compres
 
     var window: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var compress = try std.compress.flate.Compress.init(&out.writer, &window, container, std.compress.flate.Compress.Options.fastest);
+    var compress = try std.compress.flate.Compress.init(&out.writer, &window, container, std.compress.flate.Compress.Options.default);
 
     try compress.writer.writeAll(data);
     try compress.finish();
