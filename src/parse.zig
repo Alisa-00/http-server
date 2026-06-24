@@ -61,6 +61,7 @@ fn parseHeaderValue(reader: *std.Io.Reader) ![]const u8 {
 
 fn parseBody(allocator: std.mem.Allocator, reader: *std.Io.Reader, length: usize) ![]const u8 {
     const body = try allocator.alloc(u8, length);
+    std.debug.print("allocated body!\n{any}\n", .{body});
     try reader.readSliceAll(body);
     return body;
 }
@@ -89,7 +90,7 @@ pub fn parseRequest(allocator: std.mem.Allocator, reader: *std.Io.Reader) !http.
     var length: u32 = 0;
     if (request.headers.contains("content-length")) {
         length = try std.fmt.parseInt(u32, request.headers.get("content-length").?, 10);
-        if (length < http.MAX_BODY_SIZE) {
+        if (length > http.MAX_BODY_SIZE) {
             length = http.MAX_BODY_SIZE;
         }
     }

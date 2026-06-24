@@ -106,22 +106,38 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
         std.debug.print("files endpoint\nopening directory: {s}\nopening file: {s}\n", .{ file_directory, query_content });
         const dir = try std.Io.Dir.openDirAbsolute(io, file_directory, std.Io.Dir.OpenOptions{});
         std.debug.print("file directory has been opened\n", .{});
-        const file = dir.readFileAlloc(io, query_content, allocator, std.Io.Limit.unlimited) catch |err| {
-            switch (err) {
-                std.Io.File.OpenError.FileNotFound => {
-                    response.status = http.StatusCode.HTTP_404;
-                    response.reason = "Not Found";
-                    return response;
-                },
-                else => return err,
-            }
-        };
-        std.debug.print("File has been read\n", .{});
-        try response.addHeader(allocator, "Content-Type", "application/octet-stream");
-        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{file.len});
-        try response.addHeader(allocator, "Content-Length", content_length);
-        response.body = file;
-        return response;
+
+        switch (request.method) {
+            http.Method.GET => {
+                const file = dir.readFileAlloc(io, query_content, allocator, std.Io.Limit.unlimited) catch |err| {
+                    switch (err) {
+                        std.Io.File.OpenError.FileNotFound => {
+                            response.status = http.StatusCode.HTTP_404;
+                            response.reason = "Not Found";
+                            return response;
+                        },
+                        else => return err,
+                    }
+                };
+
+                std.debug.print("File has been read\n", .{});
+                try response.addHeader(allocator, "Content-Type", "application/octet-stream");
+                const content_length = try std.fmt.allocPrint(allocator, "{d}", .{file.len});
+                try response.addHeader(allocator, "Content-Length", content_length);
+                response.body = file;
+                return response;
+            },
+            http.Method.POST => {
+                const file = try dir.createFile(io, query_content, std.Io.Dir.CreateFileOptions{});
+                defer file.close(io);
+                try file.writeStreamingAll(io, request.body);
+
+                response.status = http.StatusCode.HTTP_201;
+                response.reason = "Created";
+                return response;
+            },
+            else => {},
+        }
     }
 
     if (std.ascii.eqlIgnoreCase(endpoint, "echo")) {

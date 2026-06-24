@@ -19,6 +19,7 @@ pub const Version = enum {
 
 pub const StatusCode = enum(u32) {
     HTTP_200 = 200,
+    HTTP_201 = 201,
     HTTP_202 = 202,
     HTTP_302 = 302,
     HTTP_400 = 400,
