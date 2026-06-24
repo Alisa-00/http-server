@@ -1,14 +1,12 @@
 # HTTP Server
 
-A basic HTTP server written in Zig for the purpose of learning more about the HTTP protocol and networking at a low level.
+A basic HTTP server written in Zig for learning purposes.
 
 ## Development
 
-### Core functionality
+### Current functionality
 
-- [X] Request parsing
-- [ ] Networking layer
-- [ ] Response generation
-- [ ] Basic routing
-- [ ] Server loop
-- [ ] Middleware support
+- Request parsing
+- Networking layer
+- Response generation
+- Server loop
