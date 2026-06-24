@@ -120,7 +120,7 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
 
         switch (request.method) {
             http.Method.GET => {
-                const file = dir.readFileAlloc(io, query_content, allocator, std.Io.Limit.unlimited) catch |err| {
+                var content = dir.readFileAlloc(io, query_content, allocator, std.Io.Limit.unlimited) catch |err| {
                     switch (err) {
                         std.Io.File.OpenError.FileNotFound => {
                             response.status = http.StatusCode.HTTP_404;
@@ -132,10 +132,13 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
                 };
 
                 std.debug.print("File has been read\n", .{});
+                if (response.headers.contains("Content-Encoding")) {
+                    content = try compressBody(allocator, content, std.compress.flate.Container.gzip);
+                }
                 try response.addHeader(allocator, "Content-Type", "application/octet-stream");
-                const content_length = try std.fmt.allocPrint(allocator, "{d}", .{file.len});
+                const content_length = try std.fmt.allocPrint(allocator, "{d}", .{content.len});
                 try response.addHeader(allocator, "Content-Length", content_length);
-                response.body = file;
+                response.body = content;
                 return response;
             },
             http.Method.POST => {
@@ -153,9 +156,13 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
 
     if (std.ascii.eqlIgnoreCase(endpoint, "echo")) {
         try response.addHeader(allocator, "Content-Type", "text/plain");
-        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{query_content.len});
+        var content = @constCast(query_content);
+        if (response.headers.contains("Content-Encoding")) {
+            content = try compressBody(allocator, content, std.compress.flate.Container.gzip);
+        }
+        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{content.len});
         try response.addHeader(allocator, "Content-Length", content_length);
-        response.body = query_content;
+        response.body = content;
         return response;
     }
 
@@ -163,14 +170,25 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
         const header_content = request.headers.get("user-agent") orelse {
             response.status = http.StatusCode.HTTP_400;
             response.reason = "Bad Request";
-            response.body = "Missing User-Agent header";
+            const body = "Missing User-Agent header";
+            var content: []u8 = @constCast(body);
+            if (response.headers.contains("Content-Encoding")) {
+                content = try compressBody(allocator, content, std.compress.flate.Container.gzip);
+            }
+            response.body = content;
+            const content_length = try std.fmt.allocPrint(allocator, "{d}", .{content.len});
+            _ = try response.addHeader(allocator, "Content-Length", content_length);
             return response;
         };
 
         _ = try response.addHeader(allocator, "Content-Type", "text/plain");
-        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{header_content.len});
+        var content = @constCast(header_content);
+        if (response.headers.contains("Content-Encoding")) {
+            content = try compressBody(allocator, @constCast(header_content), std.compress.flate.Container.gzip);
+        }
+        const content_length = try std.fmt.allocPrint(allocator, "{d}", .{content.len});
         _ = try response.addHeader(allocator, "Content-Length", content_length);
-        response.body = header_content;
+        response.body = content;
         return response;
     }
 
@@ -178,4 +196,18 @@ fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request
     response.reason = "Not Found";
 
     return response;
+}
+
+fn compressBody(allocator: std.mem.Allocator, data: []u8, container: std.compress.flate.Container) ![]u8 {
+    var out = try std.Io.Writer.Allocating.initCapacity(allocator, 4096);
+    errdefer out.deinit();
+
+    var window: [std.compress.flate.max_window_len]u8 = undefined;
+
+    var compress = try std.compress.flate.Compress.init(&out.writer, &window, container, std.compress.flate.Compress.Options.fastest);
+
+    try compress.writer.writeAll(data);
+    try compress.finish();
+
+    return out.toOwnedSlice();
 }
