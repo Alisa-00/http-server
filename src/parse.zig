@@ -61,7 +61,6 @@ fn parseHeaderValue(reader: *std.Io.Reader) ![]const u8 {
 
 fn parseBody(allocator: std.mem.Allocator, reader: *std.Io.Reader, length: usize) ![]const u8 {
     const body = try allocator.alloc(u8, length);
-    std.debug.print("allocated body!\n{any}\n", .{body});
     try reader.readSliceAll(body);
     return body;
 }

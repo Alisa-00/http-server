@@ -95,7 +95,7 @@ pub const Response = struct {
         //const server = try response.headers.getOrPut(allocator, "Server");
         //server.value_ptr.* = "ZigTTP";
         const connection = try response.headers.getOrPut(allocator, "Connection");
-        connection.value_ptr.* = "Read this value from request";
+        connection.value_ptr.* = "keep-alive";
         //const host = try response.headers.getOrPut(allocator, "Host");
         //host.value_ptr.* = "Read this value from request";
 
@@ -111,7 +111,12 @@ pub const Response = struct {
 
     pub fn addHeader(self: *Response, allocator: std.mem.Allocator, name: []const u8, value: []const u8) !void {
         const header = try self.headers.getOrPut(allocator, name);
+        if (header.found_existing) {
+            std.debug.print("old header value: {s}\n", .{header.value_ptr.*});
+        }
+        std.debug.print("new header value: {s}\n", .{value});
         header.value_ptr.* = value;
+        std.debug.print("HEADER {s}: {s}\n", .{ header.key_ptr.*, header.value_ptr.* });
     }
 
     pub fn toString(self: *Response, allocator: std.mem.Allocator) ![]u8 {

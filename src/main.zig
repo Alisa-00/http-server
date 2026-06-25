@@ -66,24 +66,40 @@ fn handleConnection(io: std.Io, allocator: std.mem.Allocator, connection: std.Io
     const stream_out = &writer.interface;
     const stream_in = &reader.interface;
 
-    std.debug.print("{d} - Reading request!\n", .{conn_id});
+    var keep_alive = true;
 
-    const request = try parse.parseRequest(arena, stream_in);
+    while (keep_alive) {
+        std.debug.print("{d} - Reading request!\n", .{conn_id});
 
-    std.debug.print("{d} - REQUEST PARSED:\n{s} {s} {s}\n", .{ conn_id, @tagName(request.method), request.path, @tagName(request.version) });
-    for (request.headers.keys()) |header| {
-        const value = request.headers.get(header).?;
-        std.debug.print("{s}: {s}\n", .{ header, value });
+        const request = try parse.parseRequest(arena, stream_in);
+
+        std.debug.print("{d} - REQUEST PARSED:\n{s} {s} {s}\n", .{ conn_id, @tagName(request.method), request.path, @tagName(request.version) });
+        for (request.headers.keys()) |header| {
+            const value = request.headers.get(header).?;
+            std.debug.print("{s}: {s}\n", .{ header, value });
+        }
+        std.debug.print("{s}\n", .{request.body});
+
+        var response = try handleRequest(io, arena, request, directory);
+
+        if (request.headers.contains("connection")) {
+            if (request.headers.get("connection")) |close| {
+                if (std.ascii.eqlIgnoreCase(close, "close")) keep_alive = false;
+            }
+        }
+
+        if (!keep_alive) {
+            std.debug.print("HEADER BEFORE OVERWRITE {s}: {s}\n", .{ "Connection", response.headers.get("Connection").? });
+            try response.addHeader(allocator, "Connection", "close");
+            std.debug.print("HEADER AFTER OVERWRITE {s}: {s}\n", .{ "Connection", response.headers.get("Connection").? });
+        }
+
+        const response_string = try response.toString(arena);
+        std.debug.print("{d} - OUTGOING RESPONSE:\n{s}\n", .{ conn_id, response_string });
+
+        try stream_out.print("{s}", .{response_string});
+        try stream_out.flush();
     }
-    std.debug.print("{s}\n", .{request.body});
-
-    var response = try handleRequest(io, arena, request, directory);
-    const response_string = try response.toString(arena);
-
-    std.debug.print("{d} - OUTGOING RESPONSE:\n{s}\n", .{ conn_id, response_string });
-
-    try stream_out.print("{s}", .{response_string});
-    try stream_out.flush();
 }
 
 fn handleRequest(io: std.Io, allocator: std.mem.Allocator, request: http.Request, file_directory: []u8) !http.Response {
